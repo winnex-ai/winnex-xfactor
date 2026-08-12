@@ -1,0 +1,113 @@
+# ============================================================================
+# winnex-xfactor .gitignore — robusto e seguro
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Credenciais e segredos — NUNCA versionar
+# ---------------------------------------------------------------------------
+*.pypirc
+.pypirc
+.twine.cfg
+.twine*
+credentials.json
+*credential*
+*.token
+*.key
+*.pem
+*.pfx
+*.jks
+*.secret
+secrets/
+.env
+.env.*
+!.env.example
+!*.example
+.pypi*
+twine.env
+netrc
+_netrc
+
+# ---------------------------------------------------------------------------
+# Artefatos de build — nunca versionar binários/objetos
+# ---------------------------------------------------------------------------
+build/
+build_*/
+dist/
+*.egg-info/
+*.egg
+*.whl
+*.tar.gz
+*.so
+*.dylib
+*.dll
+*.a
+*.o
+*.obj
+*.lib
+*.exe
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+.ninja*
+Ninja
+Testing/
+install_manifest.txt
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+nox/
+*.log
+*.prof
+
+# ---------------------------------------------------------------------------
+# Documentos que NÃO devem ser publicados (apenas README.md é publicado)
+# ---------------------------------------------------------------------------
+*.pdf
+*.ipynb
+*.docx
+!README.md
+
+# ---------------------------------------------------------------------------
+# Ambientes virtuais
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+.env-local/
+
+# ---------------------------------------------------------------------------
+# Editores / IDE
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Diversos
+# ---------------------------------------------------------------------------
+*.tmp
+*.bak
+*.orig
+*.rej
+core
+core.*
+!core/

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12", "cmake>=3.20", "auditwheel>=5.0", "numpy>=1.20"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "winnex-xfactor"
+version = "1.0.0"
+description = "Deterministic manifold embedding for native LLM inference — the X-Factor operator (O(D²r) power iteration, no training)."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Winnex Brasil Soluções Empresariais LTDA-ME", email = "pay@winnex.ai" },
+]
+keywords = [
+    "x-factor", "manifold", "embedding", "llm", "inference", "spectral",
+    "eigenvalue", "power-iteration", "deterministic", "winnex", "madhava",
+    "semantic", "dimension-reduction",
+]
+classifiers = [
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+]
+dependencies = [
+    "numpy>=1.20",
+]
+
+[project.urls]
+Homepage = "https://winnex.ai"
+Source = "https://github.com/winnex-ai/winnex-xfactor"
+
+[tool.scikit-build]
+minimum-version = "0.10"
+build-dir = "build/{wheel_tag}"
+cmake.version = ">=3.20"
+wheel.packages = ["python/winnex_xfactor"]
+sdist.include = [
+    "include/**",
+    "src/**",
+    "bindings/**",
+    "CMakeLists.txt",
+    "pyproject.toml",
+    "README.md",
+    "LICENSE",
+]
+
+[tool.scikit-build.cmake.define]
+WINNEX_XFACTOR_BUILD_TESTS = "OFF"
+WINNEX_XFACTOR_BUILD_PYTHON = "ON"
+
+[tool.setuptools]
+package-dir = { "" = "python" }
