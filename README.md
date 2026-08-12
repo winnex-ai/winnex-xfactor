@@ -75,6 +75,17 @@ h = winnex_xfactor.embed_spectral(psi, P)   # length 2048, on the manifold
 - `expand_spectral(psi, d, D)` — zero-pad + L2 normalize
 - `embed_spectral(psi, P)` — full text→manifold projection
 
+## Benchmark
+
+Run the benchmark on Kaggle — installs `winnex-xfactor` (and `winnex-nano` for
+the safetensors loader) from PyPI and computes the X-Factor from **real
+embeddings** of a Qwen model (Kaggle `qwen-lm/qwen`):
+
+[![Kaggle](https://img.shields.io/badge/Kaggle-Manifold%20benchmark-20BEFF?logo=kaggle)](https://www.kaggle.com/code/kleniopadilha/winnex-xfactor-benchmark-manifold)
+
+Result: effective rank 118 (D=128, τ=0.95, variance captured 0.954),
+compute 0.03s — power iteration with deflation (O(D²·r)) on real embeddings.
+
 ## License
 
 BSL 1.1 | pay@winnex.ai | (c) Winnex Brasil Soluções Empresariais LTDA-ME
