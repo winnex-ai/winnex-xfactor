@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "winnex-xfactor"
-version = "1.0.0"
+version = "1.0.1"
 description = "Deterministic manifold embedding for native LLM inference — the X-Factor operator (O(D²r) power iteration, no training)."
 readme = "README.md"
 requires-python = ">=3.8"
