@@ -51,6 +51,17 @@ void power_eigh_next(std::vector<float>& C, int D, int k,
             for (int j = 0; j < D; ++j) s += Ci[j] * v[j];
             work[i] = s;
         }
+        // Modified Gram-Schmidt: re-orthogonalize against ALL previously
+        // found eigenvectors (columns 0..k-1 of evecs). This keeps the
+        // basis orthonormal so P = XXᵀ is idempotent within float precision.
+        // Without it, power-iteration deflation accumulates orthogonality
+        // error ‖E_ort‖ ≈ O(r·ε_ort), breaking P² = P.
+        for (int j = 0; j < k; ++j) {
+            const float* uj = evecs.data() + (size_t)j * D;
+            float dot = 0.0f;
+            for (int i = 0; i < D; ++i) dot += work[i] * uj[i];
+            for (int i = 0; i < D; ++i) work[i] -= dot * uj[i];
+        }
         // Rayleigh quotient (the bound): λ = vᵀCv / vᵀv  (vᵀv = 1).
         float new_lambda = 0.0f;
         for (int i = 0; i < D; ++i) new_lambda += v[i] * work[i];
@@ -58,6 +69,7 @@ void power_eigh_next(std::vector<float>& C, int D, int k,
         float nw = 0;
         for (int i = 0; i < D; ++i) nw += work[i] * work[i];
         nw = std::sqrt(nw) + 1e-12f;
+        if (nw < 1e-10f) break;  // degenerate: remaining direction exhausted
         for (int i = 0; i < D; ++i) v[i] = work[i] / nw;
         if (std::fabs(new_lambda - lambda) < 1e-6f * (1.0f + std::fabs(new_lambda))) {
             lambda = new_lambda;
