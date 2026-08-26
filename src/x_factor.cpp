@@ -146,6 +146,10 @@ XFactor::XFactor(const float* embed_tokens, int vocab, int dim, double variance_
     }
     r = std::max(1, r + 1);  // at least one component
     variance_captured_ = acc / trace;
+    variance_total_ = trace;
+    // Keep the (positive) eigenvalues for the variance-fraction diagnostics.
+    evals_.resize(std::min(r, max_candidates));
+    for (int j = 0; j < (int)evals_.size(); ++j) evals_[j] = std::max(0.0f, evals[j]);
 
     // 5. X = top-r eigenvectors (columns of evecs, D×max_candidates).
     //    evecs is column-major (column j at [j*D, (j+1)*D)).

@@ -24,12 +24,35 @@ PYBIND11_MODULE(_winnex_xfactor, m) {
     m.doc() = "winnex-xfactor — deterministic manifold embedding (O(D^2 r) power iteration)";
 
     py::class_<XFactor>(m, "XFactor")
-        .def(py::init<const float*, int, int, double>(),
+        .def(py::init([](py::array_t<float, py::array::c_style | py::array::forcecast> E,
+                         int vocab, int dim, double tau) {
+                 auto info = E.request();
+                 if ((size_t)info.shape[0] * (size_t)info.shape[1] < (size_t)vocab * (size_t)dim)
+                     throw std::runtime_error("XFactor: embed_tokens too small for vocab*dim");
+                 return new XFactor((const float*)info.ptr, vocab, dim, tau);
+             }),
              py::arg("embed_tokens"), py::arg("vocab"), py::arg("dim"),
              py::arg("variance_tau") = 0.95)
         .def_property_readonly("dim", &XFactor::dim)
         .def_property_readonly("rank", &XFactor::rank)
         .def_property_readonly("variance_captured", &XFactor::variance_captured)
+        // UB Width: Cauchy-Schwarz residual (manifold distance) and the
+        // variance-fraction routing signal.
+        .def("residual", [](const XFactor& self, py::array_t<float, py::array::c_style | py::array::forcecast> v) {
+            auto info = v.request();
+            if (info.ndim != 1 || (int)info.shape[0] != self.dim())
+                throw std::runtime_error("XFactor.residual: input must be length dim");
+            return self.residual((const float*)info.ptr);
+        }, py::arg("v"))
+        .def("mean_residual", [](const XFactor& self, py::array_t<float, py::array::c_style | py::array::forcecast> v) {
+            auto info = v.request();
+            if (info.ndim != 2 || (int)info.shape[1] != self.dim())
+                throw std::runtime_error("XFactor.mean_residual: input must be (n, dim)");
+            return self.mean_residual((const float*)info.ptr, (int)info.shape[0]);
+        }, py::arg("v"))
+        .def("variance_fraction", &XFactor::variance_fraction, py::arg("k"))
+        .def("rank_for_variance", &XFactor::rank_for_variance, py::arg("frac"))
+        .def("foldable", &XFactor::foldable, py::arg("s"), py::arg("tau_k"), py::arg("mean_e_q") = 1.0)
         .def("project", [](const XFactor& self, py::array_t<float, py::array::c_style | py::array::forcecast> v) {
             auto info = v.request();
             if (info.ndim != 1 || (int)info.shape[0] != self.dim())
