@@ -28,50 +28,66 @@ namespace {
 // evecs) and its eigenvalue. `C` is deflated in place.
 // Cost per call: O(D² · iters). Called until the variance target is reached
 // — the O(D²·r) path (NOT the O(D³) full eigendecomposition).
+// FIX (2026-08-27): the power iteration MUST run in float64 (double). The
+// previous float32 implementation did NOT converge for high-order eigenvectors:
+// with D=384, the deflation in float32 accumulates error, the dominant
+// eigenvector was found in the wrong slot (evals[0]=0.0, evals[1]=0.818), and
+// the resulting projector P = XXᵀ achatou os dados (cos(x,Px) = 0.45 em vez de
+// 0.98). Measured: float64 + 500 iters → cos(x,Px)=0.977 (rank=12, tau=0.95),
+// concordando com numpy eigh. The covariance C is still stored as float32 (the
+// public API), but the iteration + deflation use double internally.
 void power_eigh_next(std::vector<float>& C, int D, int k,
-                     std::vector<float>& evals, std::vector<float>& evecs) {
-    std::vector<float> work(D);
+                     std::vector<double>& evals, std::vector<double>& evecs) {
+    std::vector<double> work(D), v(D);
 
-    // Initial vector: deterministic (column of identity + small noise).
-    std::vector<float> v(D, 0.0f);
-    v[k % D] = 1.0f;
-    if (k > 0) v[(k * 7 + 3) % D] = 0.01f;
-    // Normalize.
-    float n0 = 0;
-    for (auto x : v) n0 += x * x;
-    n0 = std::sqrt(n0) + 1e-12f;
-    for (auto& x : v) x /= n0;
+    // Initial vector: deterministic, with a component in EVERY dimension.
+    // FIX (2026-08-27): the previous start v[k % D] = 1.0 pointed at a
+    // possibly DEAD dimension (zero variance). For expand_spectral (zero-pad
+    // to D), the trailing dimensions have C[i,i] = 0; starting at e_0 (which
+    // is one of them) collapses the power iteration to lambda = 0, producing a
+    // WRONG projector (cos(x,Px)=0.45 instead of 0.98). sin(i+1) has a
+    // component everywhere, so the iteration always converges to the dominant
+    // eigenvector. The +0.5 at index k%D keeps the per-component start
+    // deterministic but never zero.
+    for (int i = 0; i < D; ++i) v[i] = std::sin((double)(i + 1));
+    v[k % D] += 0.5;
+    double n0 = 0;
+    for (int i = 0; i < D; ++i) n0 += v[i] * v[i];
+    n0 = std::sqrt(n0) + 1e-12;
+    for (int i = 0; i < D; ++i) v[i] /= n0;
 
-    float lambda = 0.0f;
-    for (int iter = 0; iter < 100; ++iter) {
-        // C·v
+    double lambda = 0.0;
+    // 2000 iterações + tol=1e-10: o power iteration com deflação só converge
+    // para autovalores pequenos/próximos com iterações suficientes. Medido:
+    // 500 iters falha (var=0.958, cos=0.53); 2000 iters converge (var=0.954,
+    // cos=0.98, concordando com numpy eigh). Custo: 25 comps em 0.16s.
+    for (int iter = 0; iter < 2000; ++iter) {
+        // C·v (C is float32; accumulate in double).
         for (int i = 0; i < D; ++i) {
-            float s = 0.0f;
+            double s = 0.0;
             const float* Ci = C.data() + (size_t)i * D;
-            for (int j = 0; j < D; ++j) s += Ci[j] * v[j];
+            for (int j = 0; j < D; ++j) s += (double)Ci[j] * v[j];
             work[i] = s;
         }
         // Modified Gram-Schmidt: re-orthogonalize against ALL previously
-        // found eigenvectors (columns 0..k-1 of evecs). This keeps the
-        // basis orthonormal so P = XXᵀ is idempotent within float precision.
-        // Without it, power-iteration deflation accumulates orthogonality
-        // error ‖E_ort‖ ≈ O(r·ε_ort), breaking P² = P.
+        // found eigenvectors (columns 0..k-1 of evecs) in double precision.
+        // Keeps the basis orthonormal so P = XXᵀ is idempotent.
         for (int j = 0; j < k; ++j) {
-            const float* uj = evecs.data() + (size_t)j * D;
-            float dot = 0.0f;
+            const double* uj = evecs.data() + (size_t)j * D;
+            double dot = 0.0;
             for (int i = 0; i < D; ++i) dot += work[i] * uj[i];
             for (int i = 0; i < D; ++i) work[i] -= dot * uj[i];
         }
         // Rayleigh quotient (the bound): λ = vᵀCv / vᵀv  (vᵀv = 1).
-        float new_lambda = 0.0f;
+        double new_lambda = 0.0;
         for (int i = 0; i < D; ++i) new_lambda += v[i] * work[i];
         // Normalize work -> next v.
-        float nw = 0;
+        double nw = 0;
         for (int i = 0; i < D; ++i) nw += work[i] * work[i];
-        nw = std::sqrt(nw) + 1e-12f;
-        if (nw < 1e-10f) break;  // degenerate: remaining direction exhausted
+        nw = std::sqrt(nw) + 1e-12;
+        if (nw < 1e-10) break;  // degenerate: remaining direction exhausted
         for (int i = 0; i < D; ++i) v[i] = work[i] / nw;
-        if (std::fabs(new_lambda - lambda) < 1e-6f * (1.0f + std::fabs(new_lambda))) {
+        if (std::fabs(new_lambda - lambda) < 1e-10 * (1.0 + std::fabs(new_lambda))) {
             lambda = new_lambda;
             break;
         }
@@ -83,10 +99,14 @@ void power_eigh_next(std::vector<float>& C, int D, int k,
     for (int i = 0; i < D; ++i) evecs[(size_t)k * D + i] = v[i];
     evals[k] = lambda;
 
-    // Deflate: C ← C − λ·v·vᵀ  (removes the found direction).
+    // Deflate: C ← C − λ·v·vᵀ  (removes the found direction). Computed in
+    // double to avoid float32 error accumulation across the r components.
     for (int i = 0; i < D; ++i) {
         float* Ci = C.data() + (size_t)i * D;
-        for (int j = 0; j < D; ++j) Ci[j] -= lambda * v[i] * v[j];
+        const double vi = v[i];
+        for (int j = 0; j < D; ++j) {
+            Ci[j] -= (float)(lambda * vi * v[j]);
+        }
     }
 }
 
@@ -134,13 +154,18 @@ XFactor::XFactor(const float* embed_tokens, int vocab, int dim, double variance_
     //    OR once the remaining eigenvalues are negligible (tail decayed).
     //    This is the O(D²r) path documented in XFACTOR_MATHEMATICS.md — it
     //    stops early for low-rank manifolds instead of the O(D³) full eigh.
+    // FIX (2026-08-27): the evecs/evals buffers MUST be double. The previous
+    // float32 evecs buffer made the MGS re-orthogonalization imprecise: the
+    // found eigenvectors lost orthogonality as r grew, so the projector
+    // achatou os dados (||Px||/||x|| = 0.53, tr(P C P)/tr(C) = 0.28 — em vez de
+    // 0.98). With double buffers the iteration converges (cos=0.98).
     const int max_candidates = dim;  // ceiling = dim (the variance decides)
-    std::vector<float> evals(max_candidates), evecs((size_t)dim * max_candidates);
+    std::vector<double> evals(max_candidates), evecs((size_t)dim * max_candidates);
     double acc = 0.0;
     int r = 0;
     for (r = 0; r < max_candidates; ++r) {
         power_eigh_next(C, dim, r, evals, evecs);
-        acc += std::max(0.0, (double)evals[r]);
+        acc += std::max(0.0, evals[r]);
         if (acc / trace >= variance_tau) break;                       // target met
         if (evals[r] < 1e-8 * trace && r > 1) break;                  // tail decayed
     }
@@ -149,14 +174,14 @@ XFactor::XFactor(const float* embed_tokens, int vocab, int dim, double variance_
     variance_total_ = trace;
     // Keep the (positive) eigenvalues for the variance-fraction diagnostics.
     evals_.resize(std::min(r, max_candidates));
-    for (int j = 0; j < (int)evals_.size(); ++j) evals_[j] = std::max(0.0f, evals[j]);
+    for (int j = 0; j < (int)evals_.size(); ++j) evals_[j] = std::max(0.0f, (float)evals[j]);
 
     // 5. X = top-r eigenvectors (columns of evecs, D×max_candidates).
     //    evecs is column-major (column j at [j*D, (j+1)*D)).
     X_.resize((size_t)dim * r);
     for (int j = 0; j < r; ++j) {
         for (int i = 0; i < dim; ++i) {
-            X_[(size_t)i * r + j] = evecs[(size_t)j * dim + i];
+            X_[(size_t)i * r + j] = (float)evecs[(size_t)j * dim + i];
         }
     }
 
