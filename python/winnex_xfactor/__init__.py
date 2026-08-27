@@ -53,7 +53,7 @@ XFactor = _native.XFactor
 compute_xfactor = _native.compute_xfactor
 expand_spectral = _native.expand_spectral
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __all__ = ["XFactor", "compute_xfactor", "expand_spectral", "__version__",
            "build_xfactor", "embed_spectral"]
 
