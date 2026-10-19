@@ -53,7 +53,13 @@ XFactor = _native.XFactor
 compute_xfactor = _native.compute_xfactor
 expand_spectral = _native.expand_spectral
 
-__version__ = "1.0.4"
+# vem dos metadados do pacote — fonte unica de verdade (o valor do pyproject,
+# por sua vez derivado da tag git)
+try:
+    from importlib.metadata import version as _v
+    __version__ = _v("winnex-xfactor")
+except Exception:  # rodando do fonte, sem instalar
+    __version__ = "0.0.0+local"
 __all__ = ["XFactor", "compute_xfactor", "expand_spectral", "__version__",
            "build_xfactor", "embed_spectral"]
 
