@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "winnex-xfactor"
-version = "1.0.4"
+version = "1.0.5"
 description = "Deterministic manifold embedding for native LLM inference — the X-Factor operator (O(D²r) power iteration, no training)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -51,6 +51,29 @@ sdist.include = [
 [tool.scikit-build.cmake.define]
 WINNEX_XFACTOR_BUILD_TESTS = "OFF"
 WINNEX_XFACTOR_BUILD_PYTHON = "ON"
+
+[tool.cibuildwheel]
+# CPython 3.10–3.13. Sem esta seção o CI anterior publicava só cp312 (o
+# CIBW_BUILD do workflow fixava `cp312-manylinux_x86_64`, e os três jobs da
+# matriz construíam o mesmo wheel).
+build = "cp310-* cp311-* cp312-* cp313-*"
+skip = "*-musllinux_*"
+test-command = "python -c \"import winnex_xfactor; print(winnex_xfactor.__version__)\""
+test-requires = "numpy"
+build-verbosity = 1
+
+[tool.cibuildwheel.linux]
+# x86_64 apenas: aarch64 roda sob emulação QEMU no runner x86_64 e, com 4
+# ABIs × compilação C++, estoura o tempo do job.
+archs = ["x86_64"]
+manylinux-x86_64-image = "manylinux_2_28"
+
+[tool.cibuildwheel.macos]
+# macos-14 é arm64; x86_64 sairia por cross-compile e dobra o tempo
+archs = ["arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
 
 [tool.setuptools]
 package-dir = { "" = "python" }
