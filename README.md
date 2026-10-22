@@ -40,8 +40,38 @@ The eigendecomposition uses **power iteration with deflation**:
 O(D²·r·iters)  vs  O(D³) for a full Jacobi/eigh
 ```
 
-~2000× faster at D=2048, with the same deterministic guarantee (the Madhava
-philosophy: bound-guided selection, provable operators, no black boxes).
+**Honest cost (corrected 2026-10-21).** An earlier version of this README
+claimed "~2000× faster at D=2048". That number does not reproduce, and the sign
+is wrong at the dimension it names. Measured against `numpy.eigh` on the same
+covariance:
+
+| D | power iteration | numpy eigh | speedup |
+|---|---|---|---|
+| 128 | 0.25 s | 0.43 s | 1.7× |
+| 384 | 7.4 s | 8.9 s | 1.2× |
+| **2048** | **399 s** | **34.7 s** | **0.09× (11× slower)** |
+
+The cause is structural: `max_candidates = D` with up to **2000 iterations per
+component**. At D=2048 the effective rank is ~1656, so the cost is
+1656 × 2000 × O(D²) against a single O(D³) `eigh`.
+
+What the method actually wins is the **low-rank regime** — a corpus whose
+effective rank is small relative to D. Measured on genuinely low-rank
+embeddings (rank 40, in D=512 and D=1024): **8.3×** and **5.6×** faster than
+`eigh`.
+
+**Recommendation.** Use this operator when the manifold is known to be
+low-rank and you want a deterministic, dependency-free implementation. For
+D ≥ 2048 with a high effective rank, `numpy.eigh` — or a randomized SVD
+(Halko–Martinsson–Tropp) — is an order of magnitude faster and should be
+preferred.
+
+The mathematical output is correct in every regime: the projector is idempotent
+(‖P²−P‖/‖P‖ = 3.3e-7), exactly symmetric, and the reported rank matches the
+true eigendecomposition. Only the performance claim was wrong.
+
+The guarantee that does hold everywhere is determinism: fixed seed, fixed
+iteration count, same input → same basis.
 
 ## Install
 
