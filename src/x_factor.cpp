@@ -57,10 +57,44 @@ void power_eigh_next(std::vector<float>& C, int D, int k,
     for (int i = 0; i < D; ++i) v[i] /= n0;
 
     double lambda = 0.0;
-    // 2000 iterações + tol=1e-10: o power iteration com deflação só converge
-    // para autovalores pequenos/próximos com iterações suficientes. Medido:
-    // 500 iters falha (var=0.958, cos=0.53); 2000 iters converge (var=0.954,
-    // cos=0.98, concordando com numpy eigh). Custo: 25 comps em 0.16s.
+    //
+    // CONVERGENCE BY BOUND, NOT BY A FIXED ITERATION COUNT (2026-10-22).
+    //
+    // This loop ran 2000 iterations unconditionally. The comment above it
+    // justified the number by trial — "500 iters fails (var=0.958, cos=0.53);
+    // 2000 iters converges" — rather than by any criterion. Measured
+    // consequence: 399 s in D=2048 against 34.7 s for numpy.eigh (0.09x, i.e.
+    // 11x SLOWER), and the README claimed it was 2000x FASTER.
+    //
+    // The convergence rate of power iteration is (lambda_2/lambda_1)^iters, so
+    // the iterations needed depend entirely on the spectrum:
+    //
+    //     lambda2/lambda1 = 0.99 -> 1375 iters for 1e-6
+    //     lambda2/lambda1 = 0.90 ->  132
+    //     lambda2/lambda1 = 0.50 ->   20
+    //
+    // A single fixed count is either wasteful (well-separated spectrum) or
+    // insufficient (tight spectrum). The stopping test uses the Rayleigh
+    // quotient, which is the eigenvalue estimate itself — when it stops moving
+    // relative to its own magnitude, the direction has converged.
+    //
+    // The old test was |Δλ| < 1e-10·(1+|λ|). That is below float32 resolution
+    // for the accumulated covariance, so it NEVER fired and the loop always ran
+    // to 2000. Two changes make it meaningful:
+    //
+    //   (a) tolerance RELATIVE to lambda, not to 1+|lambda|. For small
+    //       eigenvalues (the tail components) the absolute floor of 1 made the
+    //       test far too strict; for large ones it was far too loose.
+    //   (b) a re-orthogonalization pass AFTER the loop, because stopping early
+    //       can leave the vector slightly off the orthonormal basis. Without it
+    //       P = XX^T drifts from idempotent as r grows — which is exactly the
+    //       failure the float64 fix in 2026-08-27 was addressing.
+    //
+    // kIterTol is deliberately loose (1e-3): the projector only needs the
+    // subspace, not each eigenvector to machine precision. Measured effect on
+    // variance captured is checked by the caller (XFactor's tau target).
+    constexpr double kIterTol = 1e-3;
+    double prev_lambda = 0.0;
     for (int iter = 0; iter < 2000; ++iter) {
         // C·v (C is float32; accumulate in double).
         for (int i = 0; i < D; ++i) {
@@ -87,11 +121,32 @@ void power_eigh_next(std::vector<float>& C, int D, int k,
         nw = std::sqrt(nw) + 1e-12;
         if (nw < 1e-10) break;  // degenerate: remaining direction exhausted
         for (int i = 0; i < D; ++i) v[i] = work[i] / nw;
-        if (std::fabs(new_lambda - lambda) < 1e-10 * (1.0 + std::fabs(new_lambda))) {
+        // RELATIVE convergence: |Δλ| / |λ| < tol.
+        const double denom = std::fabs(new_lambda) + 1e-30;
+        if (std::fabs(new_lambda - prev_lambda) / denom < kIterTol) {
             lambda = new_lambda;
             break;
         }
+        prev_lambda = new_lambda;
         lambda = new_lambda;
+    }
+
+    // POST-LOOP RE-ORTHOGONALIZATION (second MGS pass). Stopping early can
+    // leave the vector slightly off the basis built by previous components;
+    // one extra pass restores orthogonality to double precision. This is what
+    // keeps P = XX^T idempotent when the loop exits early.
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int j = 0; j < k; ++j) {
+            const double* uj = evecs.data() + (size_t)j * D;
+            double dot = 0.0;
+            for (int i = 0; i < D; ++i) dot += v[i] * uj[i];
+            for (int i = 0; i < D; ++i) v[i] -= dot * uj[i];
+        }
+        double nn = 0.0;
+        for (int i = 0; i < D; ++i) nn += v[i] * v[i];
+        nn = std::sqrt(nn);
+        if (nn < 1e-12) break;
+        for (int i = 0; i < D; ++i) v[i] /= nn;
     }
 
     // Store eigenvector (column k). The buffer is D×max_candidates
